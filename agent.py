@@ -1,48 +1,43 @@
 from datetime import datetime, timezone
-from dotenv import load_dotenv
-load_dotenv()
 import config
-from llm_client import run as run_llm
-from state_store import append_sentiment,get_ticker_state,update_ticker_state
-from tools.edgar_tool import check_new_filing,get_cached_filing_text,get_filing_sections
+from state_store import get_ticker_state, update_ticker_state, append_filing_record, save_analysis
+from tools.edgar_tool import check_new_filing, get_filing_sections, get_filing_meta, get_previous_filing, list_recent_filings
+from tools.financials_tool import get_financial_snapshot, compare_financials
 from tools.price_tool import get_price_snapshot
-from tools.sentiment_tool import score_text
-from tools.divergence_tool import compute_divergence
+from tools.language_tool import extract_language_signals, compare_text
+from tools.transcript_tool import get_transcript
+from llm_client import analyze
 
-def execute_tool(name,args):
-    ticker=str(args.get("ticker","")).upper()
-    if name=="check_new_filing":
-        state=get_ticker_state(ticker)
-        result=check_new_filing(ticker,args.get("last_known_accession",state.get("last_accession_number")))
-        if result.get("has_new_filing"): update_ticker_state(ticker,last_accession_number=result["accession_number"])
-        return result
-    if name=="get_filing_sections": return get_filing_sections(ticker)
-    if name=="score_filing_sentiment":
-        text=get_cached_filing_text(ticker)
-        if not text:return {"error":"No cached filing. Call check_new_filing first."}
-        result=score_text(text)
-        if "compound" in result: append_sentiment(ticker,result["compound"])
-        return result
-    if name=="get_price_snapshot": return get_price_snapshot(ticker)
-    if name=="compute_divergence":
-        state=get_ticker_state(ticker); history=state.get("sentiment_history",[])[:-1]
-        return compute_divergence(float(args["sentiment_compound"]),history,float(args["price_pct_change"]),config.DIVERGENCE_Z_THRESHOLD)
-    return {"error":f"Unknown tool: {name}"}
+def build_evidence(ticker, force=False):
+    state=get_ticker_state(ticker)
+    filing=check_new_filing(ticker,None if force else state.get('last_accession_number'))
+    if not filing.get('has_new_filing') and not force:
+        return {'ticker':ticker,'status':'NO_NEW_FILING','message':filing.get('message','No new filing'),'latest':filing.get('latest')}
+    if filing.get('has_new_filing'):
+        update_ticker_state(ticker,last_accession_number=filing['accession_number'])
+        append_filing_record(ticker,filing)
+    sections=get_filing_sections(ticker)
+    prior=get_previous_filing(ticker, get_filing_meta(ticker).get('accession_number','')) if get_filing_meta(ticker).get('accession_number') else {}
+    financials=get_financial_snapshot(ticker)
+    changes=compare_financials(financials)
+    price=get_price_snapshot(ticker)
+    transcript=get_transcript(ticker)
+    pack={'ticker':ticker,'filing_meta':get_filing_meta(ticker),'sections':sections,'financial_snapshot':financials,'financial_changes':changes,'price':price,'language_signals':extract_language_signals(sections), 'prior_filing': {'meta': {k: prior.get(k) for k in ('form','filing_date','report_date','accession_number','filing_url')}, 'sections': prior.get('sections',{})}, 'language_delta': {k: compare_text(sections.get(k,''), prior.get('sections',{}).get(k,'')) for k in ('mda','risk_factors','accounting_policies','notes') if sections.get(k) and prior.get('sections',{}).get(k)}}
+    if transcript: pack['earnings_call_transcript']=transcript[:80000]
+    pack['recent_filings']=list_recent_filings(ticker,limit=12)
+    return {'status':'READY','evidence':pack}
 
-def run_agent_for_ticker(ticker):
-    result=run_llm([{"role":"user","content":f"Screen {ticker} for a new filing and decide whether it deserves analyst attention."}],execute_tool)
-    lower=result.lower()
-    update_ticker_state(ticker,last_run=datetime.now(timezone.utc).isoformat())
-    if "flag" in lower or "divergence" in lower: update_ticker_state(ticker,last_flag={"note":result})
+def run_agent_for_ticker(ticker,force=False):
+    built=build_evidence(ticker,force=force)
+    if built.get('status')!='READY': return built
+    result=analyze(built['evidence'])
+    result['ticker']=ticker; result['filing_meta']=built['evidence']['filing_meta']; result['generated_at']=datetime.now(timezone.utc).isoformat()
+    save_analysis(ticker,result)
     return result
 
-def run_watchlist():
+def run_watchlist(force=False):
     out={}
     for ticker in config.WATCHLIST:
-        print(f"Checking {ticker}...")
-        try: out[ticker]=run_agent_for_ticker(ticker)
-        except Exception as e: out[ticker]=f"Error: {type(e).__name__}: {e}"
-        print(f"  -> {str(out[ticker])[:180]}")
+        try: out[ticker]=run_agent_for_ticker(ticker,force=force)
+        except Exception as e: out[ticker]={'status':'ERROR','error':f'{type(e).__name__}: {e}'}
     return out
-
-if __name__=="__main__": run_watchlist()

@@ -1,39 +1,54 @@
-# Equity Research Divergence Sentinel
+# Equity Research Filing Intelligence Agent
 
-## Purpose
-An agentic equity-research triage system. It watches a small public-company
-watchlist, detects new SEC 10-K/10-Q filings, chooses which filing information
-to inspect, scores management tone with local FinBERT, compares the tone with
-the company's own history and recent price movement, and decides whether the
-filing deserves analyst attention.
+An enhanced, cloud-friendly equity research agent that collates company filings and optional earnings-call transcripts, analyzes the whole available evidence pack, and produces a final research verdict with calls to action.
+
+## What changed from the original MVP
+
+- Whole-filing coverage rather than sentiment-only screening
+- SEC XBRL financial-statement change detection
+- Reasons for changes grounded in the filing
+- Accounting-policy / accounting-estimate change detection
+- Capital-allocation and financial-decision analysis
+- Risk-factor and management-language analysis
+- Optional earnings-call transcript ingestion
+- Cross-source reconciliation: filing + financials + price + transcript
+- Structured verdict: `ESCALATE`, `INVESTIGATE`, `MONITOR`, `NO_MATERIAL_CHANGE`
+- Research calls to action and evidence list
+- No FinBERT dependency: avoids a large local model download and reduces Streamlit Cloud friction
+- Fewer LLM calls: one evidence pack → one structured final analysis per company
 
 ## Zero-cost stack
-SEC EDGAR + yfinance + local FinBERT + local statistical divergence + Gemini
-2.5 Flash Free Tier + Streamlit.
 
-## Local Windows
-```powershell
-python -m venv venv
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\venv\Scripts\Activate.ps1
+SEC EDGAR + SEC XBRL + yfinance + Streamlit Community Cloud + Gemini free-tier model.
+
+Set `GEMINI_MODEL=gemini-3.5-flash-lite` by default. Check current Gemini availability/rate limits before deployment.
+
+## Cloud deployment
+
+1. Upload this repository to GitHub.
+2. Create a Streamlit Community Cloud app pointing to `app.py`.
+3. Add Streamlit Secrets:
+
+```toml
+GEMINI_API_KEY = "your_key"
+SEC_USER_AGENT = "Your Name your.email@example.com"
+GEMINI_MODEL = "gemini-3.5-flash-lite"
+WATCHLIST = "JPM,GS,MS,BAC,WFC"
+```
+
+Never commit `.env` or API keys.
+
+## Transcript workflow
+
+Use the sidebar to upload an earnings-call transcript as `.txt` for a selected company. It is then included in the next evidence pack for that company.
+
+## Run locally (optional)
+
+```bash
 pip install -r requirements.txt
-copy .env.example .env
-notepad .env
-python agent.py
 streamlit run app.py
 ```
 
-Set `GEMINI_API_KEY` and a real `SEC_USER_AGENT` in `.env`.
+## Research interpretation
 
-## Cloud
-Push the project to GitHub, create a Streamlit Community Cloud app with
-`app.py`, and add the Gemini key and SEC User-Agent under Streamlit Secrets.
-Do not upload `.env`.
-
-## Demo
-`python seed_demo_data.py JPM` adds synthetic history for demonstrations only.
-
-## Limitations
-SEC section extraction is heuristic; FinBERT is pretrained; short histories
-make the z-score less robust; price movement is contextual rather than causal;
-the signal is research triage, not investment advice.
+The agent's verdict is an attention-priority decision. It does not constitute personalized investment advice. Always inspect the cited filing evidence before acting on a research hypothesis.

@@ -1,8 +1,7 @@
-import sys
-from state_store import append_sentiment,update_ticker_state
-DEMO_HISTORY=[0.05,0.06,0.04]
-def seed(ticker="JPM"):
-    ticker=ticker.upper(); update_ticker_state(ticker,last_accession_number=None,last_flag=None)
-    for score in DEMO_HISTORY: append_sentiment(ticker,score)
-    print(f"Seeded {ticker} with synthetic demo history: {DEMO_HISTORY}")
-if __name__=="__main__": seed(sys.argv[1] if len(sys.argv)>1 else "JPM")
+import json, os
+from datetime import datetime, timezone
+import config
+os.makedirs(os.path.dirname(config.STATE_FILE),exist_ok=True)
+state={t:{'last_accession_number':None,'filing_history':[],'analyses':[],'last_analysis':None} for t in config.WATCHLIST}
+with open(config.STATE_FILE,'w') as f: json.dump(state,f,indent=2)
+print('Initialized clean state for:',', '.join(config.WATCHLIST))

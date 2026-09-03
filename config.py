@@ -1,10 +1,14 @@
 import os
-SEC_USER_AGENT = os.environ.get("SEC_USER_AGENT", "Filing Signal Agent your.email@example.com")
-WATCHLIST = [x.strip().upper() for x in os.environ.get("WATCHLIST", "JPM,GS,MS,BAC,WFC").split(",") if x.strip()]
-DIVERGENCE_Z_THRESHOLD = float(os.environ.get("DIVERGENCE_Z_THRESHOLD", "1.5"))
-MAX_AGENT_TURNS = int(os.environ.get("MAX_AGENT_TURNS", "8"))
-LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "gemini").lower()
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+
+WATCHLIST = [x.strip().upper() for x in os.getenv('WATCHLIST','JPM,GS,MS,BAC,WFC').split(',') if x.strip()]
+SEC_USER_AGENT = os.getenv('SEC_USER_AGENT','Filing Signal Agent research@example.com')
+GEMINI_MODEL = os.getenv('GEMINI_MODEL','gemini-3.5-flash-lite')
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY','')
+MAX_FILING_CHARS = int(os.getenv('MAX_FILING_CHARS','120000'))
+MAX_SECTION_CHARS = int(os.getenv('MAX_SECTION_CHARS','22000'))
+MAX_FACTS = int(os.getenv('MAX_FACTS','30'))
+PRICE_LOOKBACK_DAYS = int(os.getenv('PRICE_LOOKBACK_DAYS','90'))
 BASE_DIR = os.path.dirname(__file__)
-STATE_FILE = os.path.join(BASE_DIR, "data", "state.json")
-CACHE_DIR = os.path.join(BASE_DIR, "data", "cache")
+CACHE_DIR = os.path.join(BASE_DIR,'data','cache')
+STATE_FILE = os.path.join(BASE_DIR,'data','state.json')
+TRANSCRIPT_DIR = os.path.join(BASE_DIR,'data','transcripts')
